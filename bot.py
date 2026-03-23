@@ -1,137 +1,121 @@
 import random
 import json
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
-TOKEN = "8615567090:AAFUT4hSC9A71yTNMzfWa0UW44TNNDDTp3Y"
+API_TOKEN = '8615567090:AAFUT4hSC9A71yTNMzfWa0UW44TNNDDTp3Y'
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-history_file = "zone_history.json"
+DATA_FILE = "history.json"
 
 
 def load_history():
-    try:
-        with open(history_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+    if not os.path.exists(DATA_FILE):
+        return []
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def save_history(data):
-    with open(history_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def save_history(history):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(history[-2:], f, ensure_ascii=False)
 
 
 def distribute(names):
-
     history = load_history()
 
-    zones = {
-        "Зона 1": [],
-        "Зона 2": [],
-        "Зона 3": [],
-        "Зона 4": []
-    }
+    zones_count = len(names)
 
-    count = len(names)
-
-    if count >= 9:
-        caps = {
-            "Зона 1": 4,
-            "Зона 2": 2,
-            "Зона 3": 1,
-            "Зона 4": 2
-        }
+    if zones_count == 9:
+        z1 = 4
+    elif zones_count == 8:
+        z1 = 3
+    elif zones_count == 7:
+        z1 = 2
     else:
-        caps = {
-            "Зона 1": 0,
-            "Зона 2": 2,
-            "Зона 3": 1,
-            "Зона 4": 2
-        }
+        return "Нужно 7-9 человек"
+
+    z2 = 2
+    z3 = 1
+    z4 = 2
 
     random.shuffle(names)
 
-    for name in names:
+    if history:
+        last_shift = history[-1]
 
-        last = history.get(name, [])[-2:]
+        def penalty(name, zone):
+            if name in last_shift.get(zone, []):
+                return 1
+            return 0
 
-        possible = []
+        best = None
+        best_score = 999
 
-        for zone in zones:
+        for _ in range(50):
+            random.shuffle(names)
 
-            if len(zones[zone]) >= caps.get(zone, 0):
-                continue
+            attempt = {
+                "1": names[:z1],
+                "2": names[z1:z1+z2],
+                "3": names[z1+z2:z1+z2+z3],
+                "4": names[z1+z2+z3:]
+            }
 
-            if zone in last:
-                continue
+            score = 0
+            for zone in attempt:
+                for name in attempt[zone]:
+                    score += penalty(name, zone)
 
-            possible.append(zone)
+            if score < best_score:
+                best_score = score
+                best = attempt
 
-        if not possible:
-            for zone in zones:
-                if len(zones[zone]) < caps.get(zone, 0):
-                    possible.append(zone)
+        result = best
+    else:
+        result = {
+            "1": names[:z1],
+            "2": names[z1:z1+z2],
+            "3": names[z1+z2:z1+z2+z3],
+            "4": names[z1+z2+z3:]
+        }
 
-        if not possible:
-            possible = ["Зона 2", "Зона 3", "Зона 4"]
-
-        zone = random.choice(possible)
-
-        zones[zone].append(name)
-
-        if name not in history:
-            history[name] = []
-
-        history[name].append(zone)
-
-        if len(history[name]) > 5:
-            history[name] = history[name][-5:]
-
+    history.append(result)
     save_history(history)
 
-    return zones
+    return result
 
 
-@dp.message_handler(commands=["start"])
+@dp.message_handler(commands=['start'])
 async def start(message: types.Message):
     await message.answer(
-        "Напиши:\n"
-        "/zone Имена тех кто на смене"
+        "Отправь имена через пробел\n\nПример:\nИван Петр Саша Али Мага Руслан Артем"
     )
 
 
-@dp.message_handler(commands=["zone"])
-async def zone_command(message: types.Message):
+@dp.message_handler()
+async def handle(message: types.Message):
+    names = message.text.split()
 
-    parts = message.text.split()
+    result = distribute(names)
 
-    if len(parts) < 2:
-        await message.answer("Напиши имена после команды")
+    if isinstance(result, str):
+        await message.answer(result)
         return
 
-    names = parts[1:]
+    text = ""
 
-    zones = distribute(names)
-
-    text = "Распределение зон:\n\n"
-
-    for z, people in zones.items():
-
-        if not people:
-            continue
-
-        text += f"{z}\n"
-
-        for p in people:
-            text += f"• {p}\n"
-
-        text += "\n"
+    for zone in ["1", "2", "3", "4"]:
+        text += f"\nЗона {zone}:\n"
+        for name in result[zone]:
+            text += f"- {name}\n"
 
     await message.answer(text)
 
 
-if __name__ == "__main__":
-    executor.start_polling(dp)
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
+
