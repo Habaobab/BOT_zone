@@ -100,6 +100,11 @@ async def start(message: types.Message):
 async def handle(message: types.Message):
     names = message.text.split()
 
+# убираем первую команду (/zone)
+if names[0].startswith("/"):
+    
+    names = names[1:]
+
     result = distribute(names)
 
     if isinstance(result, str):
